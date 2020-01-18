@@ -443,8 +443,14 @@ function CourseTurn:turn()
 end
 
 function CourseTurn:endTurn(dt)
--- keep driving on the turn course until we need to lower our implements
-	if not self.implementsLowered and self.driver:shouldLowerImplements(self.turnContext.workStartNode, self.driver.ppc:isReversing()) then
+	-- keep driving on the turn course until we need to lower our implements
+	if self.implementsLowered then
+		-- if already lowered keep driving the turn course until aligned
+		if self.turnContext:isDirectionCloseToEndDirection(self.driver:getDirectionNode(), 5) then
+			self:debug('Turn ended, resume fieldwork')
+			self.driver:resumeFieldworkAfterTurn(self.turnContext.turnEndWpIx)
+		end
+	elseif self.driver:shouldLowerImplements(self.turnContext.workStartNode, self.driver.ppc:isReversing()) then
 		self:debug('Turn ending, lowering implements')
 		self.driver:lowerImplements()
 		self.implementsLowered = true
@@ -464,9 +470,11 @@ end
 function CourseTurn:onWaypointChange(ix)
 	AITurn.onWaypointChange(self, ix)
 	if self.turnCourse then
+		self:debug('Use tight turn offset %s', tostring(self.turnCourse:useTightTurnOffset(ix)))
 		if self.useTightTurnOffset or self.turnCourse:useTightTurnOffset(ix) then
 			-- adjust the course a bit to the outside in a curve to keep a towed implement on the course
 			self.tightTurnOffset = AIDriverUtil.calculateTightTurnOffset(self.vehicle, self.turnCourse, self.tightTurnOffset, true)
+			self:debug('Tight turn offset %.1f', self.tightTurnOffset)
 			self.turnCourse:setOffset(self.tightTurnOffset, 0)
 		end
 	end
@@ -555,6 +563,7 @@ function CourseTurn:onPathfindingDone(path)
 		-- make sure we use tight turn offset towards the end of the course so a towed implement is aligned with the new row
 		self.turnCourse:setUseTightTurnOffsetForLastWaypoints(10)
 		self.turnContext:appendEndingTurnCourse(self.turnCourse)
+		self.turnCourse:setUseTightTurnOffsetForLastWaypoints(10)
     else
 		self:debug('No path found in %d ms, falling back to normal turn course generator', self.vehicle.timer - (self.pathFindingStartedAt or 0))
 		self:generateCalculatedTurn()
